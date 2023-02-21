@@ -225,7 +225,6 @@ public function add_tracking_parameters($url, $source_url) {
     $url .= !empty($query_string) ? '?' . $query_string : '';
     return $url;
 }
-
 public function render_redirects_section() {
     echo '<div id="url-forwarder-redirects">';
     echo '<h2>' . __('Redirects', 'url-forwarder') . '</h2>';
@@ -236,43 +235,47 @@ public function render_redirects_section() {
     $i = 1;
 
     foreach ($this->redirects as $i => $redirect) {
+        echo '<tr>';
+        echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][source_url]" value="' . esc_attr($redirect['source_url']) . '" /></td>';
+        echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][destination_url]" value="' . esc_attr($redirect['destination_url']) . '" /></td>';
+        echo '<td><a href="#" class="url-forwarder-delete-redirect" data-id="' . $i . '">' . __('Delete', 'url-forwarder') . '</a></td>';
+        echo '</tr>';
+    }
+    echo '</table>';
+
+    echo '<table class="form-table">';
+    echo '<thead>';
     echo '<tr>';
-    echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][source_url]" value="' . esc_attr($redirect['source_url']) . '" /></td>';
-    echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][destination_url]" value="' . esc_attr($redirect['destination_url']) . '" /></td>';
-    echo '<td><a href="#" class="url-forwarder-delete-redirect" data-id="' . $i . '">' . __('Delete', 'url-forwarder') . '</a></td>';
+    echo '<th>' . __('Source URL', 'url-forwarder') . '</th>';
+    echo '<th>' . __('Destination URL', 'url-forwarder') . '</th>';
+    echo '<th>' . __('Actions', 'url-forwarder') . '</th>';
     echo '</tr>';
+    echo '</thead>';
+    echo '<tbody>';
+    foreach ($this->redirects as $i => $redirect) {
+        echo '<tr>';
+        echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][source_url]" value="' . esc_attr($redirect['source_url']) . '" /></td>';
+        echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][destination_url]" value="' . esc_attr($redirect['destination_url']) . '" /></td>';
+        echo '<td><a href="#" class="url-forwarder-delete-redirect" data-id="' . $i . '">' . __('Delete', 'url-forwarder') . '</a></td>';
+        echo '</tr>';
+    }
+    echo '</tbody>';
+    echo '<tfoot>';
+    echo '<tr>';
+    echo '<th>' . __('Source URL', 'url-forwarder') . '</th>';
+    echo '<th>' . __('Destination URL', 'url-forwarder') . '</th>';
+    echo '<th>' . __('Actions', 'url-forwarder') . '</th>';
+    echo '</tr>';
+    echo '<tr>';
+    echo '<td colspan="3">';
+    echo '<a href="#" class="button url-forwarder-add-redirect">' . __('Add Redirect', 'url-forwarder') . '</a>';
+    echo '<input type="submit" name="submit" class="button button-primary" value="' . __('Save Changes', 'url-forwarder') . '" />';
+    echo '</td>';
+    echo '</tr>';
+    echo '</tfoot>';
+    echo '</table>';
 }
-<table class="form-table">
-    <thead>
-        <tr>
-            <th><?php _e('Source URL', 'url-forwarder'); ?></th>
-            <th><?php _e('Destination URL', 'url-forwarder'); ?></th>
-            <th><?php _e('Actions', 'url-forwarder'); ?></th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php foreach ($this->redirects as $i => $redirect) : ?>
-            <tr>
-                <td><input type="text" name="url_forwarder_redirects[<?php echo $i; ?>][source_url]" value="<?php echo esc_attr($redirect['source_url']); ?>" /></td>
-                <td><input type="text" name="url_forwarder_redirects[<?php echo $i; ?>][destination_url]" value="<?php echo esc_attr($redirect['destination_url']); ?>" /></td>
-                <td><a href="#" class="url-forwarder-delete-redirect" data-id="<?php echo $i; ?>"><?php _e('Delete', 'url-forwarder'); ?></a></td>
-            </tr>
-        <?php endforeach; ?>
-    </tbody>
-    <tfoot>
-        <tr>
-            <th><?php _e('Source URL', 'url-forwarder'); ?></th>
-            <th><?php _e('Destination URL', 'url-forwarder'); ?></th>
-            <th><?php _e('Actions', 'url-forwarder'); ?></th>
-        </tr>
-        <tr>
-            <td colspan="3">
-                <a href="#" class="button url-forwarder-add-redirect"><?php _e('Add Redirect', 'url-forwarder'); ?></a>
-                <input type="submit" name="submit" class="button button-primary" value="<?php _e('Save Changes', 'url-forwarder'); ?>" />
-            </td>
-        </tr>
-    </tfoot>
-</table>
+
 public function update_redirects() {
     if (!current_user_can('manage_options')) {
         wp_die(__('You do not have sufficient permissions to access this page.', 'url-forwarder'));
@@ -369,54 +372,51 @@ public function redirect_request() {
 }
 
 /**
-
-Add tracking parameters to a URL
-
-@param string $url The URL to add tracking parameters to
-
-@return string The URL with tracking parameters added
-*/
+ * Add tracking parameters to a URL
+ *
+ * @param string $url The URL to add tracking parameters to
+ * @return string The URL with tracking parameters added
+ */
 private function add_tracking_parameters($url)
 {
-$params = array();
+    // Initialize an empty array to store the tracking parameters
+    $params = array();
 
-// Add UTM parameters
-foreach ($this->utm_parameters as $key => $value) {
-if (!empty($value)) {
-$params[] = $key . '=' . urlencode($value);
-}
-}
+    // Loop through the UTM parameters and add them to the array if they're not empty
+    foreach ($this->utm_parameters as $key => $value) {
+        if (!empty($value)) {
+            $params[] = $key . '=' . urlencode($value);
+        }
+    }
 
-// Add FBCLID
-if (!empty($this->fbclid)) {
-$params[] = 'fbclid=' . urlencode($this->fbclid);
-}
+    // Add FBCLID parameter if it's not empty
+    if (!empty($this->fbclid)) {
+        $params[] = 'fbclid=' . urlencode($this->fbclid);
+    }
 
-// Add GCLID
-if (!empty($this->gclid)) {
-$params[] = 'gclid=' . urlencode($this->gclid);
-}
+    // Add GCLID parameter if it's not empty
+    if (!empty($this->gclid)) {
+        $params[] = 'gclid=' . urlencode($this->gclid);
+    }
 
-// Add Value Track parameters
-foreach ($this->value_track_parameters as $key => $value) {
-if (!empty($value)) {
-$params[] = $key . '=' . urlencode($value);
-}
-}
+    // Loop through the Value Track parameters and add them to the array if they're not empty
+    foreach ($this->value_track_parameters as $key => $value) {
+        if (!empty($value)) {
+            $params[] = $key . '=' . urlencode($value);
+        }
+    }
 
-// Add custom parameters
-foreach ($this->custom_parameters as $key => $value) {
-if (!empty($value)) {
-$params[] = $key . '=' . urlencode($value);
-}
-}
+    // Loop through the custom parameters and add them to the array if they're not empty
+    foreach ($this->custom_parameters as $key => $value) {
+        if (!empty($value)) {
+            $params[] = $key . '=' . urlencode($value);
+        }
+    }
 
-// Append parameters to URL
-if (!empty($params)) {
-$separator = strpos($url, '?') !== false ? '&' : '?';
-$url .= $separator . implode('&', $params);
+    // Combine the original URL with the tracking parameters and return the result
+    $url_with_params = $url . '?' . implode('&', $params);
+    return $url_with_params;
 }
-
 return $url;
 }
 
