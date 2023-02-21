@@ -1,0 +1,602 @@
+<?php
+/**
+ * Plugin Name: User Info Redirection
+ * Description: A plugin to redirect users based on their device, browser, and UTM parameters.
+ * Version: 1.0
+ * Author: Your Name
+ * Author URI: https://yourwebsite.com/
+ */
+
+// Function to get user information
+function get_user_info() {
+    $user_agent = $_SERVER['HTTP_USER_AGENT'];
+    $ip_address = $_SERVER['REMOTE_ADDR'];
+    $screen_resolution = isset($_COOKIE['screen_resolution']) ? sanitize_text_field($_COOKIE['screen_resolution']) : '';
+    $network = isset($_COOKIE['network']) ? sanitize_text_field($_COOKIE['network']) : '';
+    $screen_colors = isset($_COOKIE['screen_colors']) ? sanitize_text_field($_COOKIE['screen_colors']) : '';
+    $mobile_device = wp_is_mobile() ? 'Yes' : 'No';
+    $browser = '';
+    $os = '';
+    $fbclid = '';
+    $gclid = '';
+    $value_track_params = '';
+    $custom_params = '';
+    $utm_source = '';
+    $utm_medium = '';
+    $utm_campaign = '';
+    $utm_term = '';
+    $utm_content = '';
+
+    // Get browser and OS information
+    $browsers = array('OPR', 'Edge', 'Chrome', 'Safari', 'Firefox', 'MSIE', 'Trident');
+    $os_list = array('Windows', 'Linux', 'Unix', 'Mac', 'iPad', 'iPhone', 'Android');
+    foreach ($browsers as $browser_name) {
+        if (strpos($user_agent, $browser_name) !== false) {
+            $browser = $browser_name;
+            break;
+        }
+    }
+    foreach ($os_list as $os_name) {
+        if (strpos($user_agent, $os_name) !== false) {
+            $os = $os_name;
+            break;
+        }
+    }
+
+    // Get UTM parameters, FBCLID, GCLID, Value Track parameters, and custom parameters
+    $query_params = $_SERVER['QUERY_STRING'];
+    parse_str($query_params, $query_vars);
+    if (isset($query_vars['fbclid'])) {
+        $fbclid = sanitize_text_field($query_vars['fbclid']);
+    }
+    if (isset($query_vars['gclid'])) {
+        $gclid = sanitize_text_field($query_vars['gclid']);
+    }
+    if (isset($query_vars['utm_source'])) {
+        $utm_source = sanitize_text_field($query_vars['utm_source']);
+    }
+    if (isset($query_vars['utm_medium'])) {
+        $utm_medium = sanitize_text_field($query_vars['utm_medium']);
+    }
+    if (isset($query_vars['utm_campaign'])) {
+        $utm_campaign = sanitize_text_field($query_vars['utm_campaign']);
+    }
+    if (isset($query_vars['utm_term'])) {
+        $utm_term = sanitize_text_field($query_vars['utm_term']);
+    }
+    if (isset($query_vars['utm_content'])) {
+        $utm_content = sanitize_text_field($query_vars['utm_content']);
+    }
+    if (isset($query_vars['utm_custom_param_1'])) {
+        $custom_params .= 'utm_custom_param_1=' . sanitize_text_field($query_vars['utm_custom_param_1']) . '&';
+    }
+    if (isset($query_vars['utm_custom_param_2'])) {
+        $custom_params .= 'utm_custom_param_2=' . sanitize_text_field($query_vars['utm_custom_param_2']) . '&';
+    }
+
+    $user_info = array(
+'ip_address' => $_SERVER['REMOTE_ADDR'],
+'device' => wp_is_mobile() ? 'Mobile' : 'Desktop',
+'operating_system' => get_operating_system(),
+'screen_resolution' => get_screen_resolution(),
+'network' => get_network(),
+'browser' => get_browser(),
+'screen_colors' => get_screen_colors(),
+'mobile_device_info' => get_mobile_device_info(),
+'utm_parameters' => get_utm_parameters(),
+'fbclid' => isset($_REQUEST['fbclid']) ? sanitize_text_field($_REQUEST['fbclid']) : '',
+'gclid' => isset($_REQUEST['gclid']) ? sanitize_text_field($_REQUEST['gclid']) : '',
+'value_track_parameters' => get_value_track_parameters(),
+'custom_parameters' => get_custom_parameters()
+);
+// Store user info in the database
+$wpdb->insert(
+    $wpdb->prefix . 'user_info',
+    array(
+        'ip_address' => $user_info['ip_address'],
+        'device' => $user_info['device'],
+        'operating_system' => $user_info['operating_system'],
+        'screen_resolution' => $user_info['screen_resolution'],
+        'network' => $user_info['network'],
+        'browser' => $user_info['browser'],
+        'screen_colors' => $user_info['screen_colors'],
+        'mobile_device_info' => $user_info['mobile_device_info'],
+        'utm_parameters' => $user_info['utm_parameters'],
+        'fbclid' => $user_info['fbclid'],
+        'gclid' => $user_info['gclid'],
+        'value_track_parameters' => $user_info['value_track_parameters'],
+        'custom_parameters' => $user_info['custom_parameters']
+    ),
+    array(
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s',
+        '%s'
+    )
+);
+}
+/**
+ * Match user info against stored info in database
+ */
+function match_user_info(): void {
+    global $wpdb;
+    $user_info = get_user_info();
+
+    $stored_user_info = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}user_info");
+
+    foreach ($stored_user_info as $stored_info) {
+        // Check if all properties match using the new match expression
+        if ($stored_info->ip_address === $user_info['ip_address']
+            && $stored_info->device === $user_info['device']
+            && $stored_info->operating_system === $user_info['operating_system']
+            && $stored_info->screen_resolution === $user_info['screen_resolution']
+            && $stored_info->network === $user_info['network']
+            && $stored_info->browser === $user_info['browser']
+            && $stored_info->screen_colors === $user_info['screen_colors']
+            && $stored_info->mobile_device_info === $user_info['mobile_device_info']
+            && $stored_info->utm_parameters === $user_info['utm_parameters']
+            && $stored_info->fbclid === $user_info['fbclid']
+            && $stored_info->gclid === $user_info['gclid']
+            && $stored_info->value_track_parameters === $user_info['value_track_parameters']
+            && $stored_info->custom_parameters === $user_info['custom_parameters']
+        ) {
+            // All user info matches, so redirect the user
+            wp_redirect('https://example.com/landing-page/');
+            exit;
+        }
+    }
+}
+
+/**
+ * Create new redirection URL with stored parameters
+ *
+ * @param array $stored_user_info Stored user information
+ * @return string New URL with stored parameters
+ */
+function create_redirection_url(array $stored_user_info): string {
+    $new_url = get_permalink();
+    // Add UTM parameters to new URL
+    if (!empty($stored_user_info['utm_parameters'])) {
+        $new_url = add_query_arg($stored_user_info['utm_parameters'], $new_url);
+    }
+
+    // Add FBCLID to new URL
+    if (!empty($stored_user_info['fbclid'])) {
+        $new_url = add_query_arg('fbclid', $stored_user_info['fbclid'], $new_url);
+    }
+
+    // Add GCLID to new URL
+    if (!empty($stored_user_info['gclid'])) {
+        $new_url = add_query_arg('gclid', $stored_user_info['gclid'], $new_url);
+    }
+
+    // Add ValueTrack parameters
+    $google_keywords = $_REQUEST['gclid'] ?? '';
+    $google_creative = $_REQUEST['gclsrc'] ?? '';
+    $google_match_type = $_REQUEST['matchtype'] ?? '';
+    $google_network = $_REQUEST['network'] ?? '';
+    
+    // Add custom parameters using the new named arguments feature
+    $custom_parameters = [
+        // add your custom parameters here
+    ];
+
+    // Return the new URL
+    return $new_url;
+}
+
+/**
+ * Check if user information exists in database and create a redirection URL
+ *
+ * @return string Redirection URL with stored UTM parameters, FBCLID, GCLID, ValueTrack parameters, and custom parameters
+ */
+function check_user_info(): string {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'user_info';
+    
+    // Get user information
+    $user_info = get_user_info();
+    
+    // Check if user info is empty
+    if (empty($user_info)) {
+        return '';
+    }
+    
+    // Build SQL query to fetch user data
+$sql = "SELECT * FROM users WHERE id = :user_id";
+$stmt = $pdo->prepare($sql);
+$stmt->bindParam(':user_id', $user_info['id'], PDO::PARAM_INT);
+$stmt->execute();
+
+// Fetch user data from database
+$user_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Check if user data was found
+if (!$user_data) {
+    return '';
+}
+
+// Build output string
+$output = "User ID: " . $user_data['id'] . "\n";
+$output .= "Name: " . $user_data['name'] . "\n";
+$output .= "Email: " . $user_data['email'] . "\n";
+
+return $output;
+    // Execute SQL query and get the result
+    $result = $wpdb->get_row($query);
+    
+    // Create redirection URL with stored UTM parameters, FBCLID, GCLID, ValueTrack parameters, and custom parameters
+    $redirection_url = '';
+    if ($result) {
+        $redirection_url = $result->redirection_url;
+        
+        $utm_parameters = array(
+            'utm_source' => $result->utm_source,
+            'utm_medium' => $result->utm_medium,
+            'utm_campaign' => $result->utm_campaign,
+            'utm_term' => $result->utm_term,
+            'utm_content' => $result->utm_content,
+        );
+        
+        // Add UTM parameters to redirection URL
+        foreach ($utm_parameters as $key => $value) {
+            if ($value) {
+                $redirection_url = add_query_arg($key, $value, $redirection_url);
+            }
+        }
+        
+        // Add FBCLID to redirection URL
+        if ($result->fbclid) {
+            $redirection_url = add_query_arg('fbclid', $result->fbclid, $redirection_url);
+        }
+        
+        // Add GCLID to redirection URL
+        if ($result->gclid) {
+            $redirection_url = add_query_arg('gclid', $result->gclid, $redirection_url);
+        }
+        
+        // Add Value Track parameters to redirection URL
+        $match_type = $result->utm_term || $result->utm_content ? 'search' : 'broad';
+        $redirection_url = add_query_arg('utm_matchtype', $match_type, $redirection_url);
+        
+        // Add custom parameters to redirection URL
+        $custom_parameters = json_decode($result->custom_parameters, true);
+        if (!empty($custom_parameters)) {
+            foreach ($custom_parameters as $key => $value) {
+                $redirection_url = add_query_arg($key, $value, $redirection_url);
+            }
+        }
+        
+        // Create new redirection URL with stored parameters
+        $new_redirection_url = create_redirection_url($user_info);
+        if (!empty($new_redirection_url)) {
+            $redirection_url = $new_redirection_url;
+        }
+    }
+    
+    return $redirection_url;
+}
+/**
+Function to create redirection table in database
+*/
+function create_redirection_table() {
+global $wpdb;
+$table_name = $wpdb->prefix . 'user_info';
+$charset_collate = $wpdb->get_charset_collate();
+$sql = "CREATE TABLE $table_name (
+id mediumint(9) NOT NULL AUTO_INCREMENT,
+user_id mediumint(9) NOT NULL,
+redirection_url text NOT NULL,
+utm_source varchar(255) DEFAULT '' NOT NULL,
+utm_medium varchar(255) DEFAULT '' NOT NULL,
+utm_campaign varchar(255) DEFAULT '' NOT NULL,
+utm_term varchar(255) DEFAULT '' NOT NULL,
+utm_content varchar(255) DEFAULT '' NOT NULL,
+fbclid varchar(255) DEFAULT '' NOT NULL,
+google_keywords varchar(255) DEFAULT '' NOT NULL,
+google_creative varchar(255) DEFAULT '' NOT NULL,
+google_match_type varchar(255) DEFAULT '' NOT NULL,
+google_network varchar(255) DEFAULT '' NOT NULL,
+custom_parameters longtext DEFAULT '' NOT NULL,
+PRIMARY KEY (id)
+) $charset_collate;";
+require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+dbDelta( $sql );
+}
+
+// Call the create_redirection_table function
+create_redirection_table();
+/**
+
+/**
+ * Function to update new redirection URL in the database
+ *
+ * @param string $new_url New URL with UTM parameters
+ */
+function update_redirection_url($new_url) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'redirection_urls';
+    $data = array('redirection_url' => $new_url);
+    $where = array('id' => 1);
+    $wpdb->update($table_name, $data, $where);
+}
+
+/**
+ * Function to handle form submission and update redirection URL in database
+ */
+function handle_redirection_form() {
+    if (isset($_POST['submit_redirection_url'])) {
+        $new_url = sanitize_text_field($_POST['redirection_url']);
+        update_redirection_url($new_url);
+        wp_redirect(admin_url('admin.php?page=my_plugin_settings&success=true'));
+        exit;
+    }
+}
+
+/**
+ * Function to create a front-end page in WordPress for editing new redirection URL
+ */
+function create_redirection_page() {
+    $page_content = '[contact-form-7 id="1234" title="Redirection URL"]';
+    $page = array(
+        'post_title' => 'Redirection URL',
+        'post_content' => $page_content,
+        'post_status' => 'publish',
+        'post_type' => 'page'
+    );
+    wp_insert_post($page);
+}
+
+/**
+ * Function to add activation hook for plugin
+ */
+function my_plugin_activate() {
+    create_redirection_page();
+    // create_redirection_table(); // Uncomment this line if you have defined the function elsewhere
+}
+
+/**
+ * Function to add deactivation hook for plugin
+ */
+function my_plugin_deactivate() {
+    // delete_redirection_table(); // Uncomment this line if you have defined the function elsewhere
+}
+
+// Register activation and deactivation hooks
+register_activation_hook(__FILE__, 'my_plugin_activate');
+register_deactivation_hook(__FILE__, 'my_plugin_deactivate');
+
+// Register action hooks for saving form data and processing redirection
+add_action('wpcf7_before_send_mail', 'save_form_data');
+add_action('wp_loaded', 'process_redirection');
+
+// Function to save form data
+function save_form_data($form) {
+    // Your code to save form data here
+}
+// Register shortcode for displaying redirection form
+add_shortcode('redirection_form', 'display_redirection_form');
+
+/**
+ * Function to display redirection form
+ * @return string Redirection form HTML
+ */
+function display_redirection_form() {
+    ob_start();
+?>
+    <div class="redirection-form">
+        <h2>Edit Redirection URL</h2>
+        <?php
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'redirection_urls';
+        $redirection_url = $wpdb->get_var("SELECT redirection_url FROM $table_name WHERE id = 1");
+        ?>
+        <form method="post">
+            <label for="redirection_url">New Redirection URL:</label>
+            <input type="url" name="redirection_url" value="<?php echo $redirection_url; ?>" required>
+            <input type="submit" value="Save">
+        </form>
+    </div>
+<?php
+    return ob_get_clean();
+}
+
+/**
+ * Function to update redirection URL in database
+ */
+// Register action hook for saving form data
+add_action('admin_post_save_redirection_url', 'update_redirection_url');
+
+/**
+ * Function to display error messages
+ */
+function display_redirection_error() {
+    if (isset($_GET['redirection_error']) && $_GET['redirection_error'] == 'true') {
+        echo '<div class="notice notice-error"><p>Error: Please enter a valid URL.</p></div>';
+    }
+}
+
+// Register action hook for displaying error messages
+add_action('admin_notices', 'display_redirection_error');
+
+// Register activation hook for creating database table
+register_activation_hook(__FILE__, 'create_redirection_table');
+
+// Register deactivation hook for deleting database table
+register_deactivation_hook(__FILE__, 'delete_redirection_table');
+/**
+
+Function to delete redirection table on plugin deactivation
+*/
+function delete_redirection_table() {
+global $wpdb;
+$table_name = $wpdb->prefix . 'redirection_urls';
+$wpdb->query("DROP TABLE IF EXISTS $table_name");
+}
+
+// Register activation hook for creating database table
+register_activation_hook(__FILE__, 'create_redirection_table');
+
+// Register deactivation hook for deleting database table
+register_deactivation_hook(__FILE__, 'delete_redirection_table');
+
+// Check if form has been submitted
+if (isset($_POST['redirection_url'])) {
+// Validate URL
+if (filter_var($_POST['redirection_url'], FILTER_VALIDATE_URL)) {
+// Save URL to database
+wp_redirect(admin_url('admin-post.php?action=save_redirection_url'));
+exit;
+} else {
+// Display error message
+wp_redirect(admin_url('admin-post.php?action=save_redirection_url&redirection_error=true'));
+exit;
+}
+}
+
+// Register shortcode for displaying redirection form
+add_shortcode('redirection_form', 'display_redirection_form');
+
+// Register action hook for saving form data
+add_action('admin_post_save_redirection_url', 'update_redirection_url');
+
+// Register action hook for displaying error messages
+add_action('admin_notices', 'display_redirection_error');
+// Register custom setting for redirect URL
+function register_redirect_url_setting($wp_customize) {
+  $wp_customize->add_setting('redirect_url', array(
+    'default' => '',
+    'sanitize_callback' => 'esc_url_raw',
+  ));
+}
+
+add_action('customize_register', 'register_redirect_url_setting');
+
+// Register custom control for redirect URL
+function register_redirect_url_control($wp_customize) {
+  $wp_customize->add_control('redirect_url_control', array(
+    'label' => __('Redirect URL', 'text-domain'),
+    'section' => 'redirect_section',
+    'settings' => 'redirect_url',
+    'type' => 'url',
+  ));
+}
+
+add_action('customize_register', 'register_redirect_url_control');
+
+// Add redirect section to the page editor
+function add_redirect_section() {
+  add_meta_box('redirect_section', __('Redirect', 'text-domain'), 'render_redirect_section', 'page', 'side', 'high');
+}
+
+add_action('add_meta_boxes', 'add_redirect_section');
+
+// Render redirect section HTML
+function render_redirect_section($post) {
+  $redirect_url = get_post_meta($post->ID, 'redirect_url', true);
+  ?>
+  <label for="redirect-url"><?php _e('Redirect URL', 'text-domain'); ?></label>
+  <input type="url" id="redirect-url" name="redirect_url" value="<?php echo esc_attr($redirect_url); ?>">
+  <?php
+}
+
+// Save redirect URL when page is updated
+function save_redirect_url($post_id) {
+  if (isset($_POST['redirect_url'])) {
+    $redirect_url = sanitize_text_field($_POST['redirect_url']);
+    update_post_meta($post_id, 'redirect_url', $redirect_url);
+  }
+}
+
+add_action('save_post', 'save_redirect_url');
+function process_redirection() {
+    if (isset($_SESSION['redirect_to'])) {
+        // Get the URL to redirect to
+        $redirect_to = $_SESSION['redirect_to'];
+
+        // Add any query parameters to the URL
+        $query_params = array();
+
+        // Add UTM parameters
+        foreach($_SESSION['utm'] as $key => $value) {
+            $query_params[] = urlencode($key) . '=' . urlencode($value);
+        }
+
+        // Add FBCLID and GCLID parameters
+        if (isset($_SESSION['fbclid'])) {
+            $query_params[] = 'fbclid=' . urlencode($_SESSION['fbclid']);
+        }
+
+        if (isset($_SESSION['gclid'])) {
+            $query_params[] = 'gclid=' . urlencode($_SESSION['gclid']);
+        }
+
+        // Add Value Track parameters
+        if (isset($_SESSION['vtr'])) {
+            foreach($_SESSION['vtr'] as $key => $value) {
+                $query_params[] = urlencode($key) . '=' . urlencode($value);
+            }
+        }
+
+        // Add custom parameters
+        if (isset($_SESSION['custom_params'])) {
+            foreach($_SESSION['custom_params'] as $key => $value) {
+                $query_params[] = urlencode($key) . '=' . urlencode($value);
+            }
+        }
+
+        // Add query parameters to the URL
+        if (!empty($query_params)) {
+            $redirect_to .= '?' . implode('&', $query_params);
+        }
+
+        // Redirect to the new URL
+        wp_redirect($redirect_to);
+        exit;
+    }
+}
+// Add a custom field to the page's meta box
+function add_redirect_url_meta_box() {
+    add_meta_box(
+        'redirect_url_meta_box',
+        'Redirection URL',
+        'render_redirect_url_meta_box',
+        'page',
+        'side'
+    );
+}
+
+// Render the custom field in the page's meta box
+function render_redirect_url_meta_box($post) {
+    // Retrieve the current redirection URL from the post meta
+    $redirect_url = get_post_meta($post->ID, 'redirect_url', true);
+    ?>
+
+    <p>
+        <label for="redirect_url_field">Enter the URL to redirect to:</label>
+        <input type="url" id="redirect_url_field" name="redirect_url" value="<?php echo esc_attr($redirect_url); ?>" />
+    </p>
+
+    <?php
+}
+
+// Save the custom field value to the post meta
+function save_redirect_url_meta_box($post_id) {
+    if (isset($_POST['redirect_url'])) {
+        $redirect_url = sanitize_text_field($_POST['redirect_url']);
+        update_post_meta($post_id, 'redirect_url', $redirect_url);
+    }
+}
+
+// Register the custom field and save its value
+add_action('add_meta_boxes_page', 'add_redirect_url_meta_box');
+add_action('save_post_page', 'save_redirect_url_meta_box');
