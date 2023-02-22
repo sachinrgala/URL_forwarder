@@ -9,367 +9,310 @@
  * License: GPL2
  */
 
-class URL_Forwarder {
-    private $redirects = array();
+
+/**
+ * Plugin Name: URL Forwarder
+ * Plugin URI: https://github.com/sachinrgala/URL_forwarder
+ * Description: Redirects specified URLs to other URLs.
+ * Version: 1.0.0
+ * Author: Sachin Gala
+ * Author URI: https://sachingala.com
+ * License: GPL2
+ */
+
+
+class Url_Forwarder {
+    private $redirects;
 
     public function __construct() {
-        // Load plugin translations
-        add_action('plugins_loaded', array($this, 'load_translations'));
-
-        // Register activation hook
-        register_activation_hook(__FILE__, array($this, 'activate'));
-
-        // Register deactivation hook
-        register_deactivation_hook(__FILE__, array($this, 'deactivate'));
-
-        // Register admin menu
-        add_action('admin_menu', array($this, 'add_admin_menu'));
-
-        // Register settings
+        add_action('admin_menu', array($this, 'add_menu_page'));
         add_action('admin_init', array($this, 'register_settings'));
-
-        // Load redirects from the database
-        $this->load_redirects();
-
-        // Register AJAX actions
         add_action('wp_ajax_add_redirect', array($this, 'ajax_add_redirect'));
         add_action('wp_ajax_delete_redirect', array($this, 'ajax_delete_redirect'));
-    }
-
-    public function load_translations() {
-        load_plugin_textdomain('url-forwarder', false, dirname(plugin_basename(__FILE__)) . '/languages/');
-    }
-
-    public function activate() {
-        // Create database table for redirects
-        global $wpdb;
-
-        $table_name = $wpdb->prefix . 'url_forwarder_redirects';
-
-        $charset_collate = $wpdb->get_charset_collate();
-
-        $sql = "CREATE TABLE $table_name (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            source_url varchar(255) NOT NULL,
-            destination_url varchar(255) NOT NULL,
-            PRIMARY KEY  (id)
-        ) $charset_collate;";
-
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
-
-    public function deactivate() {
-        // Remove database table for redirects
-        global $wpdb;
-
-        $table_name = $wpdb->prefix . 'url_forwarder_redirects';
-
-        $wpdb->query("DROP TABLE IF EXISTS $table_name");
-    }
-
-    public function add_admin_menu() {
-        // Add plugin page
-        add_plugins_page(__('URL Forwarder', 'url-forwarder'), __('URL Forwarder', 'url-forwarder'), 'manage_options', 'url-forwarder', array($this, 'render_settings_page'));
-    }
-
-    public function render_settings_page() {
-        ?>
-        <div class="wrap">
-            <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
-            <form method="post" action="options.php">
-                <?php settings_fields('url_forwarder_settings'); ?>
-                <?php do_settings_sections('url_forwarder_settings'); ?>
-                <?php submit_button(__('Save Changes', 'url-forwarder')); ?>
-            </form>
-        </div>
-        <?php
-    }
-
-    public function register_settings() {
-        // Register settings
-        register_setting('url_forwarder_settings', 'url_forwarder_redirects');
-
-        // Add section for redirects
-        add_settings_section('url_forwarder_redirects', __('Redirects', 'url-forwarder'), '', 'url_forwarder_settings');
-
-        // Add fields for redirects
-        for ($i = 1; $i <= 100; $i++) {
-            add_settings_field(
-                "url_forwarder_redirect_source_$i",
-                __('Source URL', 'url-forwarder'),
-                array($this, 'render_source_url_field'),
-                'url_forwarder_settings',
-                'url_forwarder_redirects',
-                array('id' => $i)
-            );
-            add_settings_field(
-                "url_forwarder_redirect_destination_$i",
-                __('Destination URL', 'url-forwarder'),
-                array($this, 'render_destination_url_field'),
-                'url_forwarder_settings',
-                'url_forwarder_redirects',
-                array('id' => $i)
-            );
-        }
-    }
-
-    public function render_source_url_field($args) {
-        $redirects = get_option('url_forwarder_redirects');
-        $id = $args['id'];
-        $value = isset($redirects[$id]['source_url']) ? esc_attr($redirects[$id]['source_url']) : '';
-        echo "<input type='text' name='url_forwarder_redirects[$id][source_url]' value='$value' />";
-    }
-
-    public function render_destination_url_field($args) {
-        $redirects = get_option('url_forwarder_redirects');
-        $id = $args['id'];
-        $value = isset($redirects[$id]['destination_url']) ? esc_attr($redirects[$id]['destination_url']) : '';
-        echo "<input type='text' name='url_forwarder_redirects[$id][destination_url]' value='$value' />";
-    }
-
-    public function ajax_add_redirect() {
-        $source_url = isset($_POST['source_url']) ? sanitize_text_field($_POST['source_url']) : '';
-        $destination_url = isset($_POST['destination_url']) ? sanitize_text_field($_POST['destination_url']) : '';
-
-        if (!empty($source_url) && !empty($destination_url)) {
-            $redirects = get_option('url_forwarder_redirects');
-            $redirects[] = array(
-                'source_url' => $source_url,
-                'destination_url' => $destination_url,
-            );
-            update_option('url_forwarder_redirects', $redirects);
-            wp_send_json_success(__('Redirect added successfully.', 'url-forwarder'));
-        } else {
-            wp_send_json_error(__('Invalid source URL or destination URL.', 'url-forwarder'));
-        }
-    }
-
-    public function ajax_delete_redirect() {
-        $id = isset($_POST['id']) ? absint($_POST['id']) : 0;
-
-        if ($id > 0) {
-            $redirects = get_option('url_forwarder_redirects');
-            unset($redirects[$id]);
-            update_option('url_forwarder_redirects', $redirects);
-            wp_send_json_success(__('Redirect deleted successfully.', 'url-forwarder'));
-        } else {
-            wp_send_json_error(__('Invalid redirect ID.', 'url-forwarder'));
-        }
+        $this->redirects = array();
+        $this->load_redirects();
     }
 
     public function load_redirects() {
-        $this->redirects = get_option('url_forwarder_redirects', array());
-    }
-
-    public function redirect() {
-        $url = $this->get_forwarding_url();
-
-        if (!empty($url)) {
-            wp_redirect($url, 301);
-            exit;
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'url_forwarder_redirects';
+        $results = $wpdb->get_results("SELECT * FROM $table_name");
+        for ($i = 0; $i < count($results); $i++) {
+            $this->redirects[$results[$i]->source_url] = $results[$i]->destination_url;
         }
     }
 
-    public function get_forwarding_url() {
-        $source_url = $_SERVER['REQUEST_URI'];
-        $redirect = $this->get_redirect_for_source_url($source_url);
-
-        if (!empty($redirect)) {
-    $destination_url = $redirect['destination_url'];
-    $destination_url = $this->add_tracking_parameters($destination_url, $source_url);
-    return $destination_url;
-}
-
-return '';
-}
-
-public function add_tracking_parameters($url, $source_url) {
-    // Extract UTM parameters, FBCLID, GCLID, Value Track parameters and custom parameters from the source URL
-    $parsed_url = parse_url($source_url);
-    $query_params = isset($parsed_url['query']) ? $parsed_url['query'] : '';
-    parse_str($query_params, $params);
-    $utm_params = array();
-    $fbclid = '';
-    $gclid = '';
-    $custom_params = array();
-
-    foreach ($params as $key => $value) {
-        if (preg_match('/^utm_/', $key)) {
-            $utm_params[$key] = $value;
-        } elseif ($key == 'fbclid') {
-            $fbclid = $value;
-        } elseif ($key == 'gclid') {
-            $gclid = $value;
+    public function ajax_add_redirect() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'url_forwarder_redirects';
+        $source_url = sanitize_text_field($_POST['source_url']);
+        $destination_url = sanitize_text_field($_POST['destination_url']);
+        $result = $wpdb->insert($table_name, array('source_url' => $source_url, 'destination_url' => $destination_url));
+        if ($result) {
+            echo json_encode(array('status' => 'success', 'message' => 'Redirect added successfully.'));
         } else {
-            $custom_params[$key] = $value;
+            echo json_encode(array('status' => 'error', 'message' => 'Failed to add redirect.'));
         }
+        wp_die();
     }
 
-    // Append the tracking parameters to the destination URL
-    $parsed_destination_url = parse_url($url);
-    $query_params = isset($parsed_destination_url['query']) ? $parsed_destination_url['query'] : '';
-    parse_str($query_params, $params);
-    $params = array_merge($params, $utm_params);
-    if (!empty($fbclid)) {
-        $params['fbclid'] = $fbclid;
-    }
-    if (!empty($gclid)) {
-        $params['gclid'] = $gclid;
-    }
-    $params = array_merge($params, $custom_params);
-    $query_string = http_build_query($params);
-    $url = isset($parsed_destination_url['scheme']) ? $parsed_destination_url['scheme'] . '://' : '';
-    $url .= isset($parsed_destination_url['host']) ? $parsed_destination_url['host'] : '';
-    $url .= isset($parsed_destination_url['path']) ? $parsed_destination_url['path'] : '';
-    $url .= !empty($query_string) ? '?' . $query_string : '';
-    return $url;
-}
-public function render_redirects_section() {
-    echo '<div id="url-forwarder-redirects">';
-    echo '<h2>' . __('Redirects', 'url-forwarder') . '</h2>';
-    echo '<p>' . __('Enter the old and new URLs that you want to redirect below:', 'url-forwarder') . '</p>';
-    echo '<table class="form-table">';
-    echo '<tr><th>' . __('Old URL', 'url-forwarder') . '</th><th>' . __('New URL', 'url-forwarder') . '</th><th></th></tr>';
-
-    $i = 1;
-
-    foreach ($this->redirects as $i => $redirect) {
-        echo '<tr>';
-        echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][source_url]" value="' . esc_attr($redirect['source_url']) . '" /></td>';
-        echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][destination_url]" value="' . esc_attr($redirect['destination_url']) . '" /></td>';
-        echo '<td><a href="#" class="url-forwarder-delete-redirect" data-id="' . $i . '">' . __('Delete', 'url-forwarder') . '</a></td>';
-        echo '</tr>';
-    }
-    echo '</table>';
-
-    echo '<table class="form-table">';
-    echo '<thead>';
-    echo '<tr>';
-    echo '<th>' . __('Source URL', 'url-forwarder') . '</th>';
-    echo '<th>' . __('Destination URL', 'url-forwarder') . '</th>';
-    echo '<th>' . __('Actions', 'url-forwarder') . '</th>';
-    echo '</tr>';
-    echo '</thead>';
-    echo '<tbody>';
-    foreach ($this->redirects as $i => $redirect) {
-        echo '<tr>';
-        echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][source_url]" value="' . esc_attr($redirect['source_url']) . '" /></td>';
-        echo '<td><input type="text" name="url_forwarder_redirects[' . $i . '][destination_url]" value="' . esc_attr($redirect['destination_url']) . '" /></td>';
-        echo '<td><a href="#" class="url-forwarder-delete-redirect" data-id="' . $i . '">' . __('Delete', 'url-forwarder') . '</a></td>';
-        echo '</tr>';
-    }
-    echo '</tbody>';
-    echo '<tfoot>';
-    echo '<tr>';
-    echo '<th>' . __('Source URL', 'url-forwarder') . '</th>';
-    echo '<th>' . __('Destination URL', 'url-forwarder') . '</th>';
-    echo '<th>' . __('Actions', 'url-forwarder') . '</th>';
-    echo '</tr>';
-    echo '<tr>';
-    echo '<td colspan="3">';
-    echo '<a href="#" class="button url-forwarder-add-redirect">' . __('Add Redirect', 'url-forwarder') . '</a>';
-    echo '<input type="submit" name="submit" class="button button-primary" value="' . __('Save Changes', 'url-forwarder') . '" />';
-    echo '</td>';
-    echo '</tr>';
-    echo '</tfoot>';
-    echo '</table>';
-}
-
-public function update_redirects() {
-    if (!current_user_can('manage_options')) {
-        wp_die(__('You do not have sufficient permissions to access this page.', 'url-forwarder'));
-    }
-
-    if (isset($_POST['url_forwarder_redirects'])) {
-        $redirects = $_POST['url_forwarder_redirects'];
-        $updated_redirects = array();
-
-        foreach ($redirects as $redirect) {
-            $source_url = trim($redirect['source_url']);
-            $destination_url = trim($redirect['destination_url']);
-
-            if (!empty($source_url) && !empty($destination_url)) {
-                $updated_redirects[] = array(
-                    'source_url' => $source_url,
-                    'destination_url' => $destination_url
-                );
-            }
+    public function ajax_delete_redirect() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'url_forwarder_redirects';
+        $source_url = sanitize_text_field($_POST['source_url']);
+        $result = $wpdb->delete($table_name, array('source_url' => $source_url));
+        if ($result) {
+            echo json_encode(array('status' => 'success', 'message' => 'Redirect deleted successfully.'));
+        } else {
+            echo json_encode(array('status' => 'error', 'message' => 'Failed to delete redirect.'));
         }
-
-        update_option('url_forwarder_redirects', $updated_redirects);
-        $this->redirects = $updated_redirects;
+        wp_die();
     }
 
-    // Redirect to the settings page with a success message
-    $redirect_url = add_query_arg(
-        'message',
-        urlencode(__('Settings saved.', 'url-forwarder')),
-        menu_page_url('url_forwarder_settings', false)
+    public function register_settings() {
+        $admin = new Url_Forwarder_Admin();
+        add_settings_section('url_forwarder_section', 'Url Forwarder Settings', array($admin, 'render_settings_page'), 'url_forwarder');
+        add_settings_field('url_forwarder_email', 'Email', array($admin, 'render_email_field'), 'url_forwarder', 'url_forwarder_section');
+        register_setting('url_forwarder', 'url_forwarder_email');
+        register_setting('url_forwarder_settings', 'url_forwarder_redirects');
+        add_settings_section(
+            'url_forwarder_redirects',
+            __('Redirects', 'url-forwarder'),
+            '',
+            'url_forwarder_settings'
+        );
+        for ($i = 1; $i <= 100; $i++) {
+    add_settings_field(
+        "url_forwarder_redirect_source_$i",
+        __('Source URL', 'url-forwarder'),
+        array($admin, 'render_source_url_field'),
+        'url_forwarder_redirects',
+        "url_forwarder_redirect_$i",
+        array('label_for' => "url_forwarder_redirect_source_$i")
     );
-    wp_redirect($redirect_url);
+
+    add_settings_field(
+        "url_forwarder_redirect_target_$i",
+        __('Target URL', 'url-forwarder'),
+        array($admin, 'render_target_url_field'),
+        'url_forwarder_redirects',
+        "url_forwarder_redirect_$i",
+        array('label_for' => "url_forwarder_redirect_target_$i")
+    );
+
+    register_setting(
+        'url_forwarder_redirects',
+        "url_forwarder_redirect_$i",
+        array('sanitize_callback' => array($admin, 'sanitize_redirect_settings'))
+    );
+}
+
+// You can now use the Url_Forwarder_Admin class outside of this file.
+
+add_action('admin_menu', 'register_url_forwarder_menu');
+
+function register_url_forwarder_menu() {
+add_menu_page(
+__('URL Forwarder', 'url-forwarder'),
+__('URL Forwarder', 'url-forwarder'),
+'manage_options',
+'url_forwarder',
+'url_forwarder_dashboard',
+'dashicons-share-alt',
+20
+);
+}
+
+function url_forwarder_dashboard() {
+if (!current_user_can('manage_options')) {
+wp_die(__('You do not have sufficient permissions to access this page.', 'url-forwarder'));
+}
+?>
+<div class="wrap">
+    <h1><?php _e('URL Forwarder Dashboard', 'url-forwarder'); ?></h1>
+
+    <form method="post" action="options.php">
+        <?php
+        settings_fields('url_forwarder_settings_group');
+        do_settings_sections('url_forwarder');
+        submit_button(__('Save Changes', 'url-forwarder'));
+        ?>
+    </form>
+</div><!-- .wrap -->
+if (condition) {
+  // Code to execute if condition is true
+} else {
+  // Code to execute if condition is false
+}
+</div><!-- .wrap -->
+<?php
+/**
+ * Callback function to render the Destination URL field
+ *
+ * @param array $args
+ */
+function render_destination_url_field($args)
+{
+    // Get the option name and value
+    $option_name = $args[0];
+    $destination_url = get_option($option_name);
+
+    // Output the field
+    echo '<input type="text" id="' . $option_name . '" name="' . $option_name . '" value="' . $destination_url . '" />';
+}
+
+// Closing brace for render_destination_url_field function should be here
+
+new Url_Forwarder_Admin();
+?>
+</div><!-- .wrap -->
+<?php
+}
+
+add_action('admin_menu', 'register_url_forwarder_menu');
+
+function register_url_forwarder_menu() {
+    add_menu_page(
+        __('URL Forwarder', 'url-forwarder'),
+        __('URL Forwarder', 'url-forwarder'),
+        'manage_options',
+        'url_forwarder',
+        array('Url_Forwarder_Admin', 'render_settings_page'),
+        'dashicons-admin-generic'
+    );
+}
+
+// Wrap the add_action function inside a function
+function register_admin_menu() {
+    add_action('admin_menu', 'register_url_forwarder_menu');
+}
+add_action('init', 'register_admin_menu');
+
+add_action('admin_menu', 'Url_Forwarder_Admin::add_menu_item');
+
+// Callback function to render the settings page
+function render_settings_page() {
+?>
+
+<div class="wrap">
+    <h1><?php echo __('Url Forwarder Settings', 'url-forwarder'); ?></h1>
+    <form method="post" action="options.php">
+        <?php
+        // Output necessary nonce fields for security
+        settings_fields('url_forwarder_settings_group');
+        // Output the settings sections and fields
+        do_settings_sections('url_forwarder_settings');
+        // Output the save settings button
+        submit_button(__('Save Changes', 'url-forwarder'));
+        ?>
+    </form>
+</div><!-- .wrap -->
+<?php
+}
+?>
+
+</div><!-- .wrap -->
+<?php
+}
+
+
+// Render settings page
+public static function render_settings_page() {
+    // Check if user is allowed to access settings page
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    // Get settings page URL
+    $settings_page_url = menu_page_url( self::$menu_slug, false );
+
+    // Get saved redirect data
+    $redirects = get_option( 'url_forwarder_redirects', array() );
+
+    // Output settings page HTML
+    include_once( plugin_dir_path( __FILE__ ) . 'templates/settings-page.php' );
+}
+
+// Render source URL field
+public function render_source_url_field( $args ) {
+    // Get redirect index
+    $redirect_index = str_replace( 'url_forwarder_redirect_source_url_', '', $args['id'] );
+
+    // Get source URL value
+    $source_url = isset( self::$redirects[ $redirect_index ]['source_url'] ) ? self::$redirects[ $redirect_index ]['source_url'] : '';
+
+    // Output the field
+    echo '<input type="text" id="' . $args['id'] . '" name="' . $args['id'] . '" value="' . $source_url . '" />';
+}
+
+// Render destination URL field
+public function render_destination_url_field( $args ) {
+    // Get redirect index
+    $redirect_index = str_replace( 'url_forwarder_redirect_destination_', '', $args['id'] );
+
+    // Get destination URL value
+    $destination_url = isset( self::$redirects[ $redirect_index ]['destination_url'] ) ? self::$redirects[ $redirect_index ]['destination_url'] : '';
+
+    // Output the field
+    echo '<input type="text" id="' . $args['id'] . '" name="' . $args['id'] . '" value="' . $destination_url . '" />';
+}
+
+// Validate and save settings
+public static function save_settings() {
+    // Check if user is allowed to save settings
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    // Check if nonce is set and valid
+    if ( ! isset( $_POST['url_forwarder_settings_nonce'] ) || ! wp_verify_nonce( $_POST['url_forwarder_settings_nonce'], 'url_forwarder_settings' ) ) {
+        return;
+    }
+
+    // Get saved redirect data
+    $redirects = get_option( 'url_forwarder_redirects', array() );
+
+    // Loop through post data and update redirect data
+    foreach ( $_POST as $key => $value ) {
+        // Check if key is a redirect field
+        if ( strpos( $key, 'url_forwarder_redirect_' ) === 0 ) {
+            // Get redirect index
+            $redirect_index = str_replace( 'url_forwarder_redirect_', '', $key );
+            $redirect_index_parts = explode( '_', $redirect_index );
+            $redirect_index = $redirect_index_parts[0];
+
+            // Get field name
+            $field_name = str_replace( 'url_forwarder_redirect_' . $redirect_index . '_', '', $key );
+
+            // Update redirect data
+            $redirects[ $redirect_index ][ $field_name ] = sanitize_text_field( $value );
+        }
+    }
+
+    // Save redirect data
+    update_option( 'url_forwarder_redirects', $redirects );
+
+    // Redirect back to settings page
+    wp_redirect( menu_page_url( self::$menu_slug, false ) );
     exit;
 }
 
-private function add_tracking_parameters($url) {
-    $params = array(
-        'utm_source' => 'source',
-        'utm_medium' => 'medium',
-        'utm_campaign' => 'campaign',
-        'utm_term' => 'term',
-        'utm_content' => 'content',
-        'fbclid' => 'fbclid',
-        'gclid' => 'gclid',
-        'utm_id' => 'utm_id'
-    );
+}
+// Initialize plugin
+new Url_Forwarder();
 
-    $custom_params = array(
-        'custom_param1' => 'value1',
-        'custom_param2' => 'value2',
-        'custom_param3' => 'value3'
-    );
-
-    // Parse the current URL
-    $parsed_url = wp_parse_url($url);
-    $query_params = array();
-
-    // Parse the query string and add or update the tracking parameters
-    if (!empty($parsed_url['query'])) {
-        wp_parse_str($parsed_url['query'], $query_params);
-    }
-
-    foreach ($params as $param_key => $param_value) {
-        if (!empty($_GET[$param_key])) {
-            $query_params[$param_value] = $_GET[$param_key];
-        }
-    }
-
-    foreach ($custom_params as $param_key => $param_value) {
-        if (!empty($_GET[$param_key])) {
-            $query_params[$param_key] = $_GET[$param_key];
-        }
-    }
-
-    // Add the query string to the URL
-    $query_string = http_build_query($query_params);
-    $url = add_query_arg($query_params, $url);
-
-    return $url;
+// Add settings link to plugin page
+function url_forwarder_settings_link( $links ) {
+    $settings_link = '<a href="options-general.php?page=url-forwarder">' . __( 'Settings', 'url-forwarder' ) . '</a>';
+    array_push( $links, $settings_link );
+    return $links;
 }
 
-public function redirect_request() {
-    $current_url = home_url(add_query_arg(array(), $wp->request));
+// Define the plugin basename
+$plugin_basename = plugin_basename(__FILE__);
 
-    foreach ($this->redirects as $redirect) {
-        if ($current_url == $redirect['source_url']) {
-            $destination_url = $redirect['destination_url'];
-            $destination_url = $this->add_tracking_parameters($destination_url);
-            wp_redirect($destination_url, 301);
-            exit;
-        }
-    }
-}
-}
+// Add settings link to plugin page
+add_filter( "plugin_action_links_$plugin_basename", 'url_forwarder_settings_link' );
 
 /**
  * Add tracking parameters to a URL
@@ -377,8 +320,7 @@ public function redirect_request() {
  * @param string $url The URL to add tracking parameters to
  * @return string The URL with tracking parameters added
  */
-private function add_tracking_parameters($url)
-{
+function add_tracking_parameters($url) {
     // Initialize an empty array to store the tracking parameters
     $params = array();
 
@@ -417,46 +359,94 @@ private function add_tracking_parameters($url)
     $url_with_params = $url . '?' . implode('&', $params);
     return $url_with_params;
 }
-return $url;
-}
 
-}
+function forward_url() {
+    // Get the current URL
+    $current_url = 'http' . (isset($_SERVER['HTTPS']) ? 's' : '') . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
 
+    // Add tracking parameters to the current URL
+    $new_url = $this->add_tracking_parameters($current_url);
+
+    // Redirect to the new URL
+    header('Location: ' . $new_url);
+    exit;
+}
 new URL_Forwarder();
-}
 
 // Initialize the plugin
 $url_forwarder = new URL_Forwarder();
 
+// Define the plugin basename
+$plugin_basename = plugin_basename(__FILE__);
+
 // Add a settings link to the plugin page
-add_filter('plugin_action_links_' . plugin_basename(FILE), function ($links) use ($url_forwarder) {
-$settings_link = '<a href="' . admin_url('options-general.php?page=' . $url_forwarder->plugin_slug) . '">' . __('Settings', 'url-forwarder') . '</a>';
-array_unshift($links, $settings_link);
-return $links;
+add_filter('plugin_action_links_' . $plugin_basename, function ($links) use ($url_forwarder) {
+    $settings_link = '<a href="' . admin_url('options-general.php?page=' . $url_forwarder->plugin_slug) . '">' . __('Settings', 'url-forwarder') . '</a>';
+    array_unshift($links, $settings_link);
+    return $links;
 });
 
-// Add a redirect for each defined URL
-foreach ($url_forwarder->redirects as $redirect) {
-add_action('template_redirect', function () use ($redirect, $url_forwarder) {
-if (is_page($redirect['source_url'])) {
-$destination_url = $redirect['destination_url'];
-$destination_url = $url_forwarder->add_tracking_parameters($destination_url);
-wp_redirect($destination_url, 301);
-exit;
-}
+// Add a settings link to the plugin page
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), function ($links) use ($url_forwarder) {
+  $settings_link = '<a href="' . admin_url('options-general.php?page=' . $url_forwarder->plugin_slug) . '">' . __('Settings', 'url-forwarder') . '</a>';
+  array_unshift($links, $settings_link);
+  return $links;
 });
+
+class UrlForwarder {
+  private $redirects = array();
+  public $pluginSlug = 'my-tracking-plugin';
+
+  public function __construct() {
+    // Load the redirects from the database
+    $this->loadRedirects();
+  }
+
+  private function loadRedirects() {
+    // Load redirects from the database
+    // ...
+  }
+
+  public function getRedirects() {
+    return $this->redirects;
+  }
+
+  public function addTrackingParameters($url) {
+    // Add tracking parameters to the URL
+    // ...
+    return $url;
+  }
 }
-// Add a redirect for each defined URL
-foreach ($url_forwarder->redirects as $redirect) {
-add_action('template_redirect', function () use ($redirect, $url_forwarder) {
-if (is_page($redirect['source_url'])) {
-$destination_url = $redirect['destination_url'];
-$destination_url = $url_forwarder->add_tracking_parameters($destination_url);
-wp_redirect($destination_url, 301);
-exit;
+function redirect_urls() {
+  $url_forwarder = new UrlForwarder();
+  $redirects = $url_forwarder->getRedirects();
+
+  foreach ($redirects as $redirect) {
+    add_action('template_redirect', function () use ($redirect, $url_forwarder) {
+      if (is_page($redirect['source_url'])) {
+        $destination_url = $redirect['destination_url'];
+        $destination_url = $url_forwarder->addTrackingParameters($destination_url);
+        wp_redirect($destination_url, 301);
+        exit;
+      }
+    });
+  }
 }
-});
+add_action('init', 'redirect_urls');
+
+function url_forwarder_template_redirect() {
+  $url_forwarder = new Url_Forwarder();
+  $redirects = $url_forwarder->get_redirects();
+
+  foreach ($redirects as $redirect) {
+    if (is_page($redirect['source_url'])) {
+      $destination_url = $url_forwarder->add_tracking_parameters($redirect['destination_url']);
+      wp_redirect($destination_url, 301);
+      exit;
+    }
+  }
 }
+add_action('template_redirect', 'url_forwarder_template_redirect');
 
 // Add a settings page
 add_action('admin_menu', function () use ($url_forwarder) {
@@ -477,9 +467,10 @@ add_options_page(__('URL Forwarder Settings', 'url-forwarder'), __('URL Forwarde
 });
 
 // Add a link to the plugin settings page
-add_filter('plugin_action_links_' . plugin_basename(FILE), function ($links) use ($url_forwarder) {
-$settings_link = '<a href="' . admin_url('options-general.php?page=' . $url_forwarder->plugin_slug) . '">' . __('Settings', 'url-forwarder') . '</a>';
-array_unshift($links, $settings_link);
-return $links;
-});
+define('MT_PLUGIN_FILE', __FILE__);
+
+add_filter('plugin_action_links_' . plugin_basename(MT_PLUGIN_FILE), function ($links) use ($url_forwarder) {
+    $settings_link = '<a href="' . admin_url('options-general.php?page=' . $url_forwarder->plugin_slug) . '">' . __('Settings', 'url-forwarder') . '</a>';
+    array_unshift($links, $settings_link);
+    return $links;
 });
