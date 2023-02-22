@@ -21,7 +21,7 @@
  */
 
 
-class Url_Forwarder {
+class Url_Forwarder_Admin {
     private $redirects;
 
     public function __construct() {
@@ -29,6 +29,7 @@ class Url_Forwarder {
         add_action('admin_init', array($this, 'register_settings'));
         add_action('wp_ajax_add_redirect', array($this, 'ajax_add_redirect'));
         add_action('wp_ajax_delete_redirect', array($this, 'ajax_delete_redirect'));
+        add_action('admin_init', array($this, 'register_settings'));
         $this->redirects = array();
         $this->load_redirects();
     }
@@ -75,6 +76,12 @@ class Url_Forwarder {
         add_settings_field('url_forwarder_email', 'Email', array($admin, 'render_email_field'), 'url_forwarder', 'url_forwarder_section');
         register_setting('url_forwarder', 'url_forwarder_email');
         register_setting('url_forwarder_settings', 'url_forwarder_redirects');
+         register_setting('url_forwarder', 'url_forwarder_destination_url', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'show_in_rest' => true,
+            'default' => '',
+            ));
         add_settings_section(
             'url_forwarder_redirects',
             __('Redirects', 'url-forwarder'),
@@ -117,35 +124,31 @@ __('URL Forwarder', 'url-forwarder'),
 __('URL Forwarder', 'url-forwarder'),
 'manage_options',
 'url_forwarder',
-'url_forwarder_dashboard',
-'dashicons-share-alt',
-20
-);
+array('Url_Forwarder_Admin', 'render_settings_page'),
+        'dashicons-admin-generic'
+    );
 }
+
+add_action('admin_menu', 'register_url_forwarder_menu');
 
 function url_forwarder_dashboard() {
-if (!current_user_can('manage_options')) {
-wp_die(__('You do not have sufficient permissions to access this page.', 'url-forwarder'));
-}
-?>
-<div class="wrap">
-    <h1><?php _e('URL Forwarder Dashboard', 'url-forwarder'); ?></h1>
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.', 'url-forwarder'));
+    }
+    ?>
+    <div class="wrap">
+        <h1><?php _e('URL Forwarder Dashboard', 'url-forwarder'); ?></h1>
 
-    <form method="post" action="options.php">
-        <?php
-        settings_fields('url_forwarder_settings_group');
-        do_settings_sections('url_forwarder');
-        submit_button(__('Save Changes', 'url-forwarder'));
-        ?>
-    </form>
-</div><!-- .wrap -->
-if (condition) {
-  // Code to execute if condition is true
-} else {
-  // Code to execute if condition is false
+        <form method="post" action="options.php">
+            <?php
+            settings_fields('url_forwarder_settings_group');
+            do_settings_sections('url_forwarder');
+            submit_button(__('Save Changes', 'url-forwarder'));
+            ?>
+        </form>
+    </div><!-- .wrap -->
+    <?php
 }
-</div><!-- .wrap -->
-<?php
 /**
  * Callback function to render the Destination URL field
  *
@@ -167,8 +170,6 @@ new Url_Forwarder_Admin();
 ?>
 </div><!-- .wrap -->
 <?php
-}
-
 add_action('admin_menu', 'register_url_forwarder_menu');
 
 function register_url_forwarder_menu() {
@@ -181,6 +182,7 @@ function register_url_forwarder_menu() {
         'dashicons-admin-generic'
     );
 }
+
 
 // Wrap the add_action function inside a function
 function register_admin_menu() {
@@ -218,6 +220,16 @@ function render_settings_page() {
 
 // Render settings page
 public static function render_settings_page() {
+     ?>
+        <div class="wrap">
+            <h2><?php _e('URL Forwarder', 'url-forwarder'); ?></h2>
+            <form method="post" action="options.php">
+                <?php settings_fields('url_forwarder'); ?>
+                <?php do_settings_sections('url_forwarder'); ?>
+                <?php submit_button(); ?>
+            </form>
+        </div><!-- .wrap -->
+        <?php
     // Check if user is allowed to access settings page
     if ( ! current_user_can( 'manage_options' ) ) {
         return;
@@ -247,6 +259,10 @@ public function render_source_url_field( $args ) {
 
 // Render destination URL field
 public function render_destination_url_field( $args ) {
+    $destination_url = get_option('url_forwarder_destination_url');
+        ?>
+        <input type="text" name="url_forwarder_destination_url" value="<?php echo esc_attr($destination_url); ?>" class="regular-text">
+        <?php
     // Get redirect index
     $redirect_index = str_replace( 'url_forwarder_redirect_destination_', '', $args['id'] );
 
@@ -256,57 +272,109 @@ public function render_destination_url_field( $args ) {
     // Output the field
     echo '<input type="text" id="' . $args['id'] . '" name="' . $args['id'] . '" value="' . $destination_url . '" />';
 }
+class URL_Forwarder {
+    private static $plugin_slug = 'my-tracking-plugin';
 
-// Validate and save settings
-public static function save_settings() {
-    // Check if user is allowed to save settings
-    if ( ! current_user_can( 'manage_options' ) ) {
-        return;
+    // Constructor
+    public function __construct() {
+        // Add menu page
+        add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
+
+        // Register settings
+        add_action( 'admin_init', array( $this, 'register_settings' ) );
+
+        // Add "Settings" link to plugin page
+        add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), array( $this, 'add_settings_link' ) );
     }
 
-    // Check if nonce is set and valid
-    if ( ! isset( $_POST['url_forwarder_settings_nonce'] ) || ! wp_verify_nonce( $_POST['url_forwarder_settings_nonce'], 'url_forwarder_settings' ) ) {
-        return;
+    // Add menu page
+    public function add_menu_page() {
+        add_menu_page(
+            'URL Forwarder',
+            'URL Forwarder',
+            'manage_options',
+            self::$plugin_slug,
+            array( $this, 'render_settings_page' )
+        );
     }
 
-    // Get saved redirect data
-    $redirects = get_option( 'url_forwarder_redirects', array() );
+    // Register settings
+    public function register_settings() {
+        register_setting( 'url_forwarder_settings', 'url_forwarder_redirects' );
+    }
 
-    // Loop through post data and update redirect data
-    foreach ( $_POST as $key => $value ) {
-        // Check if key is a redirect field
-        if ( strpos( $key, 'url_forwarder_redirect_' ) === 0 ) {
-            // Get redirect index
-            $redirect_index = str_replace( 'url_forwarder_redirect_', '', $key );
-            $redirect_index_parts = explode( '_', $redirect_index );
-            $redirect_index = $redirect_index_parts[0];
+    // Add "Settings" link to plugin page
+    public function add_settings_link( $links ) {
+        $settings_link = '<a href="' . menu_page_url( self::$plugin_slug, false ) . '">' . __( 'Settings', 'url-forwarder' ) . '</a>';
+        array_unshift( $links, $settings_link );
+        return $links;
+    }
 
-            // Get field name
-            $field_name = str_replace( 'url_forwarder_redirect_' . $redirect_index . '_', '', $key );
+    // Render settings page
+    public function render_settings_page() {
+        // Get redirect data
+        $redirects = get_option( 'url_forwarder_redirects', array() );
 
-            // Update redirect data
-            $redirects[ $redirect_index ][ $field_name ] = sanitize_text_field( $value );
+        // Load template
+        include( plugin_dir_path( __FILE__ ) . 'templates/settings-page.php' );
+    }
+
+    // Validate and save settings
+    public function save_settings() {
+        // Check if user is allowed to save settings
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return;
         }
+
+        // Check if nonce is set and valid
+        if ( ! isset( $_POST['url_forwarder_settings_nonce'] ) || ! wp_verify_nonce( $_POST['url_forwarder_settings_nonce'], 'url_forwarder_settings' ) ) {
+            return;
+        }
+
+        // Get saved redirect data
+        $redirects = get_option( 'url_forwarder_redirects', array() );
+
+        // Loop through post data and update redirect data
+        foreach ( $_POST as $key => $value ) {
+            // Check if key is a redirect field
+            if ( strpos( $key, 'url_forwarder_redirect_' ) === 0 ) {
+                // Get redirect index
+                $redirect_index = str_replace( 'url_forwarder_redirect_', '', $key );
+                $redirect_index_parts = explode( '_', $redirect_index );
+                $redirect_index = $redirect_index_parts[0];
+
+                // Get field name
+                $field_name = str_replace( 'url_forwarder_redirect_' . $redirect_index . '_', '', $key );
+
+                // Update redirect data
+                $redirects[ $redirect_index ][ $field_name ] = sanitize_text_field( $value );
+            }
+        }
+
+        // Save redirect data
+        update_option( 'url_forwarder_redirects', $redirects );
     }
 
-    // Save redirect data
-    update_option( 'url_forwarder_redirects', $redirects );
-
-    // Redirect back to settings page
-    wp_redirect( menu_page_url( self::$menu_slug, false ) );
-    exit;
+    // Redirect to settings page
+    public function redirect_to_settings_page() {
+        // Redirect back to settings page
+        wp_redirect( menu_page_url( self::$plugin_slug, false ) );
+        exit;
+    }
 }
 
-}
-// Initialize plugin
-new Url_Forwarder();
+// Initialize the URL_Forwarder plugin
+add_action('plugins_loaded', function() {
+    new URL_Forwarder();
+});
 
-// Add settings link to plugin page
-function url_forwarder_settings_link( $links ) {
-    $settings_link = '<a href="options-general.php?page=url-forwarder">' . __( 'Settings', 'url-forwarder' ) . '</a>';
+// Add a link to the plugin settings page on the plugin page
+add_filter( 'plugin_action_links_my-tracking-plugin/my-tracking-plugin.php', function( $links ) {
+    $settings_link = '<a href="' . esc_url( get_admin_url( null, 'options-general.php?page=url-forwarder' ) ) . '">' . __( 'Settings', 'url-forwarder' ) . '</a>';
     array_push( $links, $settings_link );
     return $links;
-}
+});
+
 
 // Define the plugin basename
 $plugin_basename = plugin_basename(__FILE__);
@@ -360,18 +428,26 @@ function add_tracking_parameters($url) {
     return $url_with_params;
 }
 
-function forward_url() {
-    // Get the current URL
-    $current_url = 'http' . (isset($_SERVER['HTTPS']) ? 's' : '') . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+class URL_Forwarder {
+    public function forward_url() {
+        // Get the current URL
+        $current_url = 'http' . (isset($_SERVER['HTTPS']) ? 's' : '') . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
 
-    // Add tracking parameters to the current URL
-    $new_url = $this->add_tracking_parameters($current_url);
+        // Add tracking parameters to the current URL
+        $new_url = $this->add_tracking_parameters($current_url);
 
-    // Redirect to the new URL
-    header('Location: ' . $new_url);
-    exit;
+        // Redirect to the new URL
+        header('Location: ' . $new_url);
+        exit;
+    }
+
+    private function add_tracking_parameters($url) {
+        // Add tracking parameters to the URL
+        // ...
+
+        return $url_with_tracking_parameters;
+    }
 }
-new URL_Forwarder();
 
 // Initialize the plugin
 $url_forwarder = new URL_Forwarder();
@@ -469,7 +545,8 @@ add_options_page(__('URL Forwarder Settings', 'url-forwarder'), __('URL Forwarde
 // Add a link to the plugin settings page
 define('MT_PLUGIN_FILE', __FILE__);
 
-add_filter('plugin_action_links_' . plugin_basename(MT_PLUGIN_FILE), function ($links) use ($url_forwarder) {
+add_filter('plugin_action_links_' . plugin_basename(MT_PLUGIN_FILE), function ($links) {
+    $url_forwarder = new URL_Forwarder();
     $settings_link = '<a href="' . admin_url('options-general.php?page=' . $url_forwarder->plugin_slug) . '">' . __('Settings', 'url-forwarder') . '</a>';
     array_unshift($links, $settings_link);
     return $links;
